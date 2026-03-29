@@ -1,8 +1,10 @@
 const express = require("express");
+const cookieParser = require("cookie-parser");
 const coursesRouter = require("./routers/router_courses");
 const usersRouter = require("./routers/routerUsers");
 require("dotenv").config();
 const app = express();
+app.use(cookieParser());
 const cors=require("cors");
 app.use(cors({
     origin:process.env.Frontend_URL

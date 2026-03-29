@@ -7,7 +7,10 @@ const register = async (req, res) => {
     const user = req.body;
     const hashedPassword = await bcrypt.hash(user.password, 10);
     const result = await userModel.addUser({ ...user, password: hashedPassword, avatar: req.file ? req.file.filename : null });
-    const token = await jwt.sign({ id: result.id, email: result.email, role: result.role}, process.env.JWT_SECRET, { expiresIn: "15m" });
+    const token = await jwt.sign({ id: result.id, email: result.email, role: result.role }, process.env.JWT_SECRET, { expiresIn: "15m" });
+    const refreshToken = await jwt.sign({ id: result.id, email: result.email, role: result.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    await db.execute("INSERT INTO RefreshToken (user_id, token) VALUES (?, ?)", [result.id, refreshToken]);
+    res.cookie("refreshToken", refreshToken, { httpOnly: true, secure: false, sameSite: "Strict", maxAge: 7 * 24 * 60 * 60 * 1000 });
     res.status(201).json({
         message: "User added successfully",
         id: result.id,
@@ -24,8 +27,20 @@ const login = async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ error: "User not found" });
     const isMatch = await bcrypt.compare(user.password, rows[0].password);
     if (!isMatch) return res.status(401).json({ error: "Invalid password" });
-    const token = await jwt.sign({ id: rows[0].id, email: rows[0].email, role: rows[0].role }, process.env.JWT_SECRET, { expiresIn: "15m" });
-    res.json({ message: "Login successful", user: { id: rows[0].id, username: rows[0].username, email: rows[0].email }, token,role: rows[0].role });
+    const AccessToken = await jwt.sign({ id: rows[0].id, email: rows[0].email, role: rows[0].role }, process.env.JWT_SECRET, { expiresIn: "15m" });
+    const RefreshToken = await jwt.sign({ id: rows[0].id, email: rows[0].email, role: rows[0].role }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    await db.execute("INSERT INTO RefreshToken (user_id, token) VALUES (?, ?)", [rows[0].id, RefreshToken]);
+    res.json({ message: "Login successful", user: { id: rows[0].id, username: rows[0].username, email: rows[0].email }, token: AccessToken, role: rows[0].role });
+    res.cookie("refreshToken", RefreshToken, { httpOnly: true, secure: false, sameSite: "Strict", maxAge: 7 * 24 * 60 * 60 * 1000 });
+};
+const refreshToken = async (req, res) => {
+    const refreshToken = req.cookies.refreshToken;
+    if (!refreshToken) return res.status(401).json({ error: "No refresh token provided" });
+    jwt.verify(refreshToken, process.env.JWT_SECRET, (err, decoded) => {
+        if (err) return res.status(403).json({ error: "Invalid refresh token" });
+        const AccessToken = jwt.sign({ id: decoded.id, email: decoded.email, role: decoded.role }, process.env.JWT_SECRET, { expiresIn: "15m" });
+        res.json({ token: AccessToken });
+    });
 };
 const getUserById = async (req, res) => {
     try {
@@ -56,10 +71,39 @@ const deleteUser = async (req, res) => {
         res.status(500).json({ error: "Error deleting user: " + error.message });
     }
 };
+const updateUser = async (req, res) => {
+    try {
+        const user = req.body;
+        const result = await userModel.updateUser(req.params.id, user.email, user.username);
+        res.status(200).json({
+            message: "User updated successfully",
+            id: result.id,
+            username: result.username,
+            email: result.email
+        });
+    }
+    catch (error) {
+        res.status(500).json({ error: "Error updating user: " + error.message });
+    }
+};
+const updatePassword = async (req, res) => {
+    try {
+        const { password, newPassword } = req.body;
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await userModel.updatePassword(req.params.id, password, hashedPassword);
+        res.status(200).json({ message: "Password updated successfully" });
+    }
+    catch (error) {
+        res.status(500).json({ error: "Error updating password: " + error.message });
+    }
+};
 module.exports = {
     register,
     login,
     getUserById,
     getAllUsers,
-    deleteUser
+    deleteUser,
+    updateUser,
+    updatePassword,
+    refreshToken
 };

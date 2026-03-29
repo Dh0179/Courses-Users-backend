@@ -1,6 +1,6 @@
 const { body ,validationResult} = require('express-validator');
 const db = require("../data/db");
-const validateUser = () => {
+const validateUserEmail = () => {
     return [
         body("email")
             .notEmpty()
@@ -12,11 +12,19 @@ const validateUser = () => {
             .normalizeEmail()
             .custom(async (email) => {
                 // Check if the email already exists in the database
-                const [rows]=await db.execute('SELECT * FROM users WHERE email = ?', [email]);
+                const [rows] = await db.execute('SELECT * FROM users WHERE email = ?', [email]);
                 if (rows.length > 0) {
                     throw new Error("Email already in use");
                 }
-            }),
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                if (!emailRegex.test(email)) {
+                    throw new Error("Invalid email format");
+                }
+            })
+    ];
+};
+const validateUserPassword = () => {
+    return [
         body("password")
             .notEmpty()
             .withMessage("Password is required")
@@ -25,8 +33,14 @@ const validateUser = () => {
             .isLength({ min: 6,max: 20 })
             .withMessage("Password must be at least 6 and at most 20 characters long")
             .matches(/\d/)
-            .withMessage("Password must contain a number"),
-        body("username")
+            .withMessage("Password must contain a number")
+            .matches(/[!@#$%^&*(),.?":{}|<>]/)
+            .withMessage("Password must contain a special character")
+    ];
+};
+const validateUserName = () => {
+    return [
+            body("username")
             .notEmpty()
             .withMessage("Username is required")
             .isString()
@@ -61,7 +75,9 @@ const validateAdmin = (req, res, next) => {
     next();
 };
 module.exports = {
-    validateUser,
+    validateUserName,
+    validateUserEmail,
+    validateUserPassword,
     validationMiddleware,
     validateLogin,
     validateAdmin

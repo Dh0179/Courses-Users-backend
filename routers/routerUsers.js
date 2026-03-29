@@ -20,15 +20,21 @@ const fileFilter = (req, file, cb) => {
 };
 const upload = multer({ storage: storage, fileFilter: fileFilter });
 const controllers = require("../controllers/users_controllers");
-const { validateUser, validationMiddleware, validateLogin,validateAdmin } = require("../middleware/validateUsers");
-const verifyToken = require("../middleware/verifyToken");
+const { validateUserName,validateUserEmail, validationMiddleware, validateLogin,validateAdmin, validateUserPassword } = require("../middleware/validateUsers");
+const {verifyAccessToken} = require("../middleware/verifytoken");
 router
-        .post("/register", upload.single("avatar"), validateUser(), validationMiddleware, controllers.register);
+        .post("/register", upload.single("avatar"), validateUserName(), validateUserEmail(), validateUserPassword(), validationMiddleware, controllers.register);
 router
         .post("/login", validateLogin(), validationMiddleware, controllers.login);
-router.route("/:id")
-        .get(verifyToken, validationMiddleware, controllers.getUserById)
-        .delete(verifyToken, validateAdmin, validationMiddleware, controllers.deleteUser);
 router
-        .get("/", verifyToken, validationMiddleware, controllers.getAllUsers);
+        .post("/refreshToken", controllers.refreshToken);
+router
+        .patch("/updatePassword/:id", verifyAccessToken, validateUserPassword(), validationMiddleware, controllers.updatePassword);
+router
+        .patch("/update/:id", verifyAccessToken, validateUserName(), validateUserEmail(), validateAdmin, validationMiddleware, controllers.updateUser);
+router.route("/:id")
+        .get(verifyAccessToken, validationMiddleware, controllers.getUserById)
+        .delete(verifyAccessToken, validateAdmin, validationMiddleware, controllers.deleteUser);
+router
+        .get("/", verifyAccessToken, validateAdmin , validationMiddleware, controllers.getAllUsers);
 module.exports = router;
