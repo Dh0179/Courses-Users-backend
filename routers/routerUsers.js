@@ -1,4 +1,9 @@
 const express = require('express');
+const ratelimit = require("express-rate-limit");
+const limiter = ratelimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+});
 const router = express.Router();
 const multer = require("multer");
 const storage = multer.diskStorage({
@@ -21,20 +26,24 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({ storage: storage, fileFilter: fileFilter });
 const controllers = require("../controllers/users_controllers");
 const { validateUserName,validateUserEmail, validationMiddleware, validateLogin,validateAdmin, validateUserPassword } = require("../middleware/validateUsers");
-const {verifyAccessToken} = require("../middleware/verifytoken");
+const { verifyAccessToken } = require("../middleware/verifytoken");
+router.use("/login", limiter);
+router.use("/register", limiter);
 router
-        .post("/register", upload.single("avatar"), validateUserName(), validateUserEmail(), validateUserPassword(), validationMiddleware, controllers.register);
+        .post("/register", upload.single("avatar"), validateUserName, validateUserEmail, validateUserPassword, validationMiddleware, controllers.register);
 router
-        .post("/login", validateLogin(), validationMiddleware, controllers.login);
+        .post("/login", validateLogin, validationMiddleware, controllers.login);
 router
         .post("/refreshToken", controllers.refreshToken);
 router
-        .patch("/updatePassword/:id", verifyAccessToken, validateUserPassword(), validationMiddleware, controllers.updatePassword);
+        .patch("/resetPassword/:id", verifyAccessToken, validateUserPassword, validationMiddleware, controllers.resetPassword);
 router
-        .patch("/update/:id", verifyAccessToken, validateUserName(), validateUserEmail(), validateAdmin, validationMiddleware, controllers.updateUser);
+        .patch("/update/:id", verifyAccessToken, validateUserName, validateUserEmail, validateAdmin, validationMiddleware, controllers.updateUser);
 router.route("/:id")
         .get(verifyAccessToken, validationMiddleware, controllers.getUserById)
         .delete(verifyAccessToken, validateAdmin, validationMiddleware, controllers.deleteUser);
 router
-        .get("/", verifyAccessToken, validateAdmin , validationMiddleware, controllers.getAllUsers);
+        .get("/", verifyAccessToken, validateAdmin, validationMiddleware, controllers.getAllUsers);
+router
+        .post("/logout", verifyAccessToken, controllers.logout);
 module.exports = router;
