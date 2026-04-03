@@ -32,6 +32,7 @@ const validateUserPassword = () => {
             .withMessage("Password must be a string")
             .isLength({ min: 6,max: 20 })
             .withMessage("Password must be at least 6 and at most 20 characters long")
+            .trim()
             .matches(/\d/)
             .withMessage("Password must contain a number")
             .matches(/[!@#$%^&*(),.?":{}|<>]/)
