@@ -76,9 +76,14 @@ const getUserById = async (req, res) => {
     }
 };
 const getAllUsers = async (req, res) => {
+    const cachedUsers = await redisClient.get(`users:page:${req.query.page || 1}:limit:${req.query.limit || 2}`);
+    if (cachedUsers) {
+        return res.json(JSON.parse(cachedUsers));
+    }
     const limit = Number.parseInt(req.query.limit) || 2;
     const page = Number.parseInt(req.query.page) || 1;
     const rows = await userModel.getAllUsers(limit, page);
+    await redisClient.setEx(`users:page:${page}:limit:${limit}`, 3600, JSON.stringify(rows)); // Cache for 1 hour
     res.json(rows);
 };
 const deleteUser = async (req, res) => {
