@@ -2,6 +2,7 @@ const db = require("../data/db");
 const User = require("../models/users");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const redisClient = require("../data/redisClient");
 const userModel = new User(db);
 const register = async (req, res) => {
     const user = req.body;
@@ -44,8 +45,8 @@ const refreshToken = async (req, res) => {
         const newRefreshToken = await jwt.sign({ id: decoded.id, email: decoded.email, role: decoded.role }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: "7d" });
         await db.execute("INSERT INTO RefreshToken (user_id, token) VALUES (?, ?)", [decoded.id, newRefreshToken]);
         res.cookie("refreshToken", newRefreshToken, { httpOnly: true, secure: false, sameSite: "Strict", maxAge: 7 * 24 * 60 * 60 * 1000 });
-        const AccessToken = await jwt.sign({ id: decoded.id, email: decoded.email, role: decoded.role }, process.env.JWT_SECRET, { expiresIn: "15m" });
-        res.json({ token: AccessToken });
+        const NewAccessToken = await jwt.sign({ id: decoded.id, email: decoded.email, role: decoded.role }, process.env.JWT_SECRET, { expiresIn: "15m" });
+        res.json({ token: NewAccessToken });
     });
 };
 const logout = async (req, res) => {
@@ -57,7 +58,12 @@ const logout = async (req, res) => {
 }
 const getUserById = async (req, res) => {
     try {
+        const cachedUser = await redisClient.get(`user:${req.params.id}`);
+        if (cachedUser) {
+            return res.json(JSON.parse(cachedUser));
+        }
         const user = await userModel.getUserById(req.params.id);
+        await redisClient.setEx(`user:${req.params.id}`, 3600, JSON.stringify(user)); // Cache for 1 hour
         res.json({
             id: user.id,
             username: user.username,
@@ -88,6 +94,7 @@ const updateUser = async (req, res) => {
     try {
         const user = req.body;
         const result = await userModel.updateUser(req.params.id, user.email, user.username);
+        await redisClient.del(`user:${req.params.id}`); // delete cache
         res.status(200).json({
             message: "User updated successfully",
             id: result.id,
