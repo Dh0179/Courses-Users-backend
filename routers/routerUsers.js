@@ -66,5 +66,5 @@ router.route("/:id")
 router
         .get("/", verifyAccessToken, validateAdmin, validationMiddleware, controllers.getAllUsers);
 router
-        .post("/logout", verifyAccessToken, controllers.logout);
+        .post("/logout", verifyAccessToken,isBlacklisted, controllers.logout);
 module.exports = router;
