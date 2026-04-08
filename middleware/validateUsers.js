@@ -41,7 +41,7 @@ const validateUserPassword = () => {
 };
 const validateUserName = () => {
     return [
-            body("username")
+        body("username")
             .notEmpty()
             .withMessage("Username is required")
             .isString()

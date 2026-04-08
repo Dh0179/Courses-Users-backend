@@ -6,21 +6,20 @@ const usersRouter = require("./routers/routerUsers");
 const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 const app = express();
+app.use(express.json());
 const cors=require("cors");
 const path=require("node:path");
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // limit each IP to 100 requests per windowMs
 });
+app.use(cookieParser());
 app.use(helmet());
 app.use(limiter);
-app.use(cookieParser());
 app.use(cors({
     origin: process.env.Frontend_URL,
     credentials: true
 }));
-app.use('/uploads', express.static(path.join(__dirname, "uploads")));
-app.use(express.json());
 //middleware
 app.use('/api/courses', coursesRouter);
 app.use('/api/users', usersRouter);
