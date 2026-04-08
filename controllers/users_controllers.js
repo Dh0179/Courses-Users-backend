@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const redisClient = require("../data/redisClient");
 const userModel = new User(db);
 const crypto = require("node:crypto");
+const { off } = require("node:cluster");
 const generateAccessToken = (user) => {
     return jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: "15m" });
 };
@@ -163,12 +164,12 @@ const getUserById = async (req, res) => {
     }
 };
 const getAllUsers = async (req, res) => {
-    const cachedUsers = await redisClient.get(`users:page:${req.query.page || 1}:limit:${req.query.limit || 2}`);
+    const limit = Number.parseInt(req.query.limit) || 2;
+    const page = Number.parseInt(req.query.page) || 1;
+    const cachedUsers = await redisClient.get(`users:page:${page}:limit:${limit}`);
     if (cachedUsers) {
         return res.json(JSON.parse(cachedUsers));
     }
-    const limit = Number.parseInt(req.query.limit) || 2;
-    const page = Number.parseInt(req.query.page) || 1;
     const rows = await userModel.getAllUsers(limit, page);
     await redisClient.setEx(`users:page:${page}:limit:${limit}`, 3600, JSON.stringify(rows)); // Cache for 1 hour
     res.json(rows);

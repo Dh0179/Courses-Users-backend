@@ -1,5 +1,4 @@
 const bcrypt = require("bcryptjs");
-const { response } = require("express");
 class User{
     constructor(db) {
         this.db = db;
