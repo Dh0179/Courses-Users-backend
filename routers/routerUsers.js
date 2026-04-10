@@ -2,6 +2,7 @@ const express = require('express');
 const ratelimit = require("express-rate-limit");
 const { RedisStore } = require("rate-limit-redis");
 const controllers = require("../controllers/users_controllers");
+const auth=require("../controllers/auth");
 const redisClient = require('../data/redisClient');
 const {isBlacklisted} = require("../middleware/isBlacklist");
 const registerLimiter = ratelimit({
@@ -52,11 +53,11 @@ const { verifyAccessToken } = require("../middleware/verifytoken");
 router.use("/login", loginLimiter);
 router.use("/register", registerLimiter);
 router
-        .post("/register", upload.single("avatar"), validateUserName(), validateUserEmail(), validateUserPassword(), validationMiddleware, controllers.register);
+        .post("/register", upload.single("avatar"), validateUserName(), validateUserEmail(), validateUserPassword(), validationMiddleware, auth.register);
 router
-        .post("/login", validateLogin(), validationMiddleware, controllers.login);
+        .post("/login", validateLogin(), validationMiddleware, auth.login);
 router
-        .post("/refreshToken", isBlacklisted,controllers.refreshToken);
+        .post("/refreshToken", isBlacklisted,auth.refreshToken);
 router
         .patch("/resetPassword/:id", verifyAccessToken, isBlacklisted, validateUserPassword(), validationMiddleware, controllers.resetPassword);
 router
@@ -67,5 +68,5 @@ router.route("/:id")
 router
         .get("/", verifyAccessToken, validateAdmin, validationMiddleware, controllers.getAllUsers);
 router
-        .post("/logout", verifyAccessToken,isBlacklisted, controllers.logout);
+        .post("/logout", verifyAccessToken,isBlacklisted, auth.logout);
 module.exports = router;

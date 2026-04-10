@@ -1,4 +1,3 @@
-const redis=require("redis");
 const redisClient=require("../data/redisClient");
 const isBlacklisted = async (req, res, next) => {
     const token = req.cookies.accessToken;
