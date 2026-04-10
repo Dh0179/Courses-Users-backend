@@ -43,5 +43,15 @@ class User{
         await this.db.execute(`UPDATE users SET password = ? WHERE id = ?`, [newPassword, id]);
         return { message: "Password updated successfully" };
     }
+    async changeToAdmin(id) {
+        this.verifyId(id);
+        await this.db.execute(`UPDATE users SET role = 'admin' WHERE id = ?`, [id]);
+        return { message: "User role updated to admin successfully" };
+    }
+    async changeToUser(id) {
+        this.verifyId(id);
+        await this.db.execute(`UPDATE users SET role = 'user' WHERE id = ?`, [id]);
+        return { message: "User role updated to user successfully" };
+    }
 };
 module.exports = User;

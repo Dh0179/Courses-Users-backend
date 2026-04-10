@@ -5,7 +5,6 @@ const jwt = require("jsonwebtoken");
 const redisClient = require("../data/redisClient");
 const userModel = new User(db);
 const crypto = require("node:crypto");
-const { off } = require("node:cluster");
 const generateAccessToken = (user) => {
     return jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: "15m" });
 };
@@ -22,22 +21,6 @@ const register = async (req, res) => {
     const {email, username, password} = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
     const result = await userModel.addUser({ email, username, password: hashedPassword, avatar: req.file ? req.file.filename : null });
-    const token = generateAccessToken(result);
-    const refreshToken = generateRefreshToken(result);
-    const hash = hashToken(refreshToken);
-    await db.execute("INSERT INTO RefreshToken (user_id, token_hash,expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))", [result.id, hash]);
-    res.cookie("refreshToken", refreshToken, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "Strict",
-        maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-    res.cookie("accessToken", token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "Strict",
-        maxAge: 15 * 60 * 1000
-    });
     res.status(201).json({
         message: "User added successfully",
         id: result.id,
@@ -79,23 +62,18 @@ const login = async (req, res) => {
                 email: rows[0].email
             },
             token: AccessToken,
-            role: rows[0].role
         });
 };
 const refreshToken = async (req, res) => {
     const refreshToken = req.cookies.refreshToken;
     if (!refreshToken) return res.status(401).json({ error: "No refresh token provided" });
     const hash = hashToken(refreshToken);
-    const [rows] = await db.execute("SELECT * FROM RefreshToken WHERE token_hash = ?", [hash]);
+    const [rows] = await db.execute("SELECT user_id FROM RefreshToken WHERE token_hash = ? AND expires_at > NOW()", [hash]);
     if (rows.length === 0) return res.status(403).json({ error: "Invalid refresh token" });
     const token = rows[0];
     if(token.revoked) {
         await db.execute("UPDATE RefreshToken SET revoked = true WHERE user_id = ?", [token.user_id]);
         return res.status(403).json({ error: "Refresh token revoked" });
-    }
-    if(Date.now() > new Date(token.expires_at).getTime()) {
-        await db.execute("DELETE FROM RefreshToken WHERE token_hash = ?", [hash]);
-        return res.status(403).json({ error: "Refresh token expired" });
     }
     await db.execute("UPDATE RefreshToken SET revoked = true WHERE id = ?", [token.id]);
     const newRefreshToken = generateRefreshToken({ id: token.user_id });
@@ -150,13 +128,16 @@ const getUserById = async (req, res) => {
         if (cachedUser) {
             return res.json(JSON.parse(cachedUser));
         }
+        if (cachedUser) {
+
+            return res.json(JSON.parse(cachedUser));
+        }
         const user = await userModel.getUserById(req.params.id);
-        await redisClient.setEx(`user:${req.params.id}`, 3600, JSON.stringify(user)); // Cache for 1 hour
+        await redisClient.setEx(`user:${req.params.id}`, 60 * 60 * 24, JSON.stringify(user)); // Cache for 1 day
         res.json({
             id: user.id,
             username: user.username,
-            email: user.email,
-            role: user.role
+            email: user.email
         });
     }
     catch (error) {
@@ -171,8 +152,13 @@ const getAllUsers = async (req, res) => {
         return res.json(JSON.parse(cachedUsers));
     }
     const rows = await userModel.getAllUsers(limit, page);
-    await redisClient.setEx(`users:page:${page}:limit:${limit}`, 3600, JSON.stringify(rows)); // Cache for 1 hour
-    res.json(rows);
+    const formattedRows = rows.map(user => ({
+        id: user.id,
+        username: user.username,
+        email: user.email
+    }));
+    await redisClient.setEx(`users:page:${page}:limit:${limit}`, 60 * 60 * 24, JSON.stringify(formattedRows)); // Cache for 1 day
+    res.json(formattedRows);
 };
 const deleteUser = async (req, res) => {
     try {
@@ -180,7 +166,11 @@ const deleteUser = async (req, res) => {
         res.json(result);
     }
     catch (error) {
-        res.status(500).json({ error: "Error deleting user: " + error.message });
+        res.status(500).json(
+            {
+                error: "Error deleting user: " + error.message
+            }
+        );
     }
 };
 const updateUser = async (req, res) => {
@@ -196,7 +186,11 @@ const updateUser = async (req, res) => {
         });
     }
     catch (error) {
-        res.status(500).json({ error: "Error updating user: " + error.message });
+        res.status(500).json(
+            {
+                error: "Error updating user: " + error.message
+            }
+        );
     }
 };
 const resetPassword = async (req, res) => {
@@ -207,7 +201,51 @@ const resetPassword = async (req, res) => {
         res.status(200).json({ message: "Password updated successfully" });
     }
     catch (error) {
-        res.status(500).json({ error: "Error updating password: " + error.message });
+        res.status(500).json(
+            {
+                error: "Error updating password: " + error.message
+            }
+        );
+    }
+};
+const changeToAdmin = async (req, res) => {
+    try {
+        const result = await userModel.changeToAdmin(req.params.id);
+        await redisClient.del(`user:${req.params.id}`); // delete cache
+        res.status(200).json({
+            message: "User role updated to admin successfully",
+            id: result.id,
+            username: result.username,
+            email: result.email,
+            role: result.role
+        });
+    }
+    catch (error) {
+        res.status(500).json(
+            {
+                error: "Error updating user role: " + error.message
+            }
+        );
+    }
+};
+const changeToUser = async (req, res) => {
+    try {
+        const result = await userModel.changeToUser(req.params.id);
+        await redisClient.del(`user:${req.params.id}`); // delete cache
+        res.status(200).json({
+            message: "User role updated to user successfully",
+            id: result.id,
+            username: result.username,
+            email: result.email,
+            role: result.role
+        });
+    }
+    catch (error) {
+        res.status(500).json(
+            {
+                error: "Error updating user role: " + error.message
+            }
+        );
     }
 };
 module.exports = {
@@ -219,5 +257,7 @@ module.exports = {
     updateUser,
     resetPassword,
     refreshToken,
-    logout
+    logout,
+    changeToAdmin,
+    changeToUser
 };
